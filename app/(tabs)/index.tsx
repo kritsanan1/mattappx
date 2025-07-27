@@ -1,160 +1,315 @@
-
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { Colors } from '@/constants/Colors';
+import { Home, TrendingUp, Heart, Brain, Target, Calendar, Award, Zap } from 'lucide-react-native';
+import { DataManager } from '@/utils/DataManager';
+import { MoodTracker } from '@/utils/MoodTracker';
+import { GamificationManager } from '@/utils/GamificationManager';
+import { AIInsightsManager } from '@/utils/AIInsightsManager';
 
 export default function HomeScreen() {
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView}>
-        <LinearGradient
-          colors={['#667eea', '#764ba2']}
-          style={styles.header}
-        >
-          <Text style={styles.welcomeText}>สวัสดี!</Text>
-          <Text style={styles.subtitleText}>วันนี้คุณรู้สึกอย่างไร?</Text>
-        </LinearGradient>
+  const [userData, setUserData] = useState<any>(null);
+  const [todayMood, setTodayMood] = useState<any>(null);
+  const [streakData, setStreakData] = useState({ current: 0, longest: 0 });
+  const [achievements, setAchievements] = useState<any[]>([]);
+  const [todayInsight, setTodayInsight] = useState<string>('');
 
-        <View style={styles.content}>
-          <View style={styles.quickActions}>
-            <Text style={styles.sectionTitle}>การดำเนินการด่วน</Text>
-            <View style={styles.actionGrid}>
-              <TouchableOpacity style={styles.actionCard}>
-                <Ionicons name="heart" size={30} color="#e74c3c" />
-                <Text style={styles.actionText}>บันทึกอารมณ์</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.actionCard}>
-                <Ionicons name="book" size={30} color="#3498db" />
-                <Text style={styles.actionText}>บันทึกประจำวัน</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.actionCard}>
-                <Ionicons name="fitness" size={30} color="#2ecc71" />
-                <Text style={styles.actionText}>กิจกรรม</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.actionCard}>
-                <Ionicons name="people" size={30} color="#f39c12" />
-                <Text style={styles.actionText}>ชุมชน</Text>
-              </TouchableOpacity>
-            </View>
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      const user = await DataManager.getUserProfile();
+      const mood = await MoodTracker.getTodayMood();
+      const gamification = GamificationManager.getInstance();
+      const currentStreak = await gamification.getCurrentStreak();
+      const longestStreak = await gamification.getLongestStreak();
+      const userAchievements = await gamification.getUserAchievements();
+      const insights = AIInsightsManager.getInstance();
+      const dailyInsight = await insights.getDailyInsight();
+
+      setUserData(user);
+      setTodayMood(mood);
+      setStreakData({ current: currentStreak, longest: longestStreak });
+      setAchievements(userAchievements.slice(0, 3)); // Show latest 3
+      setTodayInsight(dailyInsight);
+    } catch (error) {
+      console.error('Error loading dashboard data:', error);
+    }
+  };
+
+  const quickMoodEntry = async () => {
+    try {
+      const mood = await MoodTracker.quickMoodEntry();
+      setTodayMood(mood);
+      Alert.alert('สำเร็จ', 'บันทึกอารมณ์เรียบร้อยแล้ว');
+    } catch (error) {
+      Alert.alert('ข้อผิดพลาด', 'ไม่สามารถบันทึกอารมณ์ได้');
+    }
+  };
+
+  const getDaysClean = () => {
+    if (!userData?.soberStartDate) return 0;
+    const start = new Date(userData.soberStartDate);
+    const today = new Date();
+    return Math.floor((today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>สวัสดี{userData?.name ? ` ${userData.name}` : ''}! 👋</Text>
+        <Text style={styles.subtitle}>วันนี้เป็นอย่างไรบ้าง</Text>
+      </View>
+
+      {/* Main Stats */}
+      <View style={styles.statsContainer}>
+        <View style={[styles.statCard, styles.primaryCard]}>
+          <Calendar size={28} color="#fff" />
+          <Text style={styles.primaryStatNumber}>{getDaysClean()}</Text>
+          <Text style={styles.primaryStatLabel}>วันที่สะอาด</Text>
+        </View>
+
+        <View style={styles.miniStatsContainer}>
+          <View style={styles.miniStatCard}>
+            <Zap size={20} color="#667eea" />
+            <Text style={styles.miniStatNumber}>{streakData.current}</Text>
+            <Text style={styles.miniStatLabel}>ต่อเนื่อง</Text>
           </View>
 
-          <View style={styles.todayStats}>
-            <Text style={styles.sectionTitle}>สถิติวันนี้</Text>
-            <View style={styles.statsContainer}>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>7</Text>
-                <Text style={styles.statLabel}>วันต่อเนื่อง</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statNumber}>85%</Text>
-                <Text style={styles.statLabel}>เป้าหมาย</Text>
-              </View>
-            </View>
+          <View style={styles.miniStatCard}>
+            <Award size={20} color="#f39c12" />
+            <Text style={styles.miniStatNumber}>{achievements.length}</Text>
+            <Text style={styles.miniStatLabel}>รางวัล</Text>
           </View>
         </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+
+      {/* Today's Insight */}
+      {todayInsight && (
+        <View style={styles.insightCard}>
+          <Brain size={24} color="#667eea" />
+          <View style={styles.insightContent}>
+            <Text style={styles.insightTitle}>ข้อมูลเชิงลึกวันนี้</Text>
+            <Text style={styles.insightText}>{todayInsight}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* Quick Actions */}
+      <View style={styles.quickActions}>
+        <Text style={styles.sectionTitle}>การดำเนินการด่วน</Text>
+
+        <View style={styles.actionGrid}>
+          <TouchableOpacity style={styles.actionButton} onPress={quickMoodEntry}>
+            <Heart size={24} color={todayMood ? "#27ae60" : "#667eea"} />
+            <Text style={styles.actionText}>
+              {todayMood ? "อัพเดทอารมณ์" : "บันทึกอารมณ์"}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton}>
+            <Target size={24} color="#667eea" />
+            <Text style={styles.actionText}>เป้าหมายวันนี้</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton}>
+            <TrendingUp size={24} color="#667eea" />
+            <Text style={styles.actionText}>ดูความคืบหน้า</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.actionButton}>
+            <Brain size={24} color="#667eea" />
+            <Text style={styles.actionText}>ข้อมูลเชิงลึก</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Recent Achievements */}
+      {achievements.length > 0 && (
+        <View style={styles.achievementsSection}>
+          <Text style={styles.sectionTitle}>รางวัลล่าสุด</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {achievements.map((achievement, index) => (
+              <View key={index} style={styles.achievementCard}>
+                <Text style={styles.achievementEmoji}>{achievement.emoji}</Text>
+                <Text style={styles.achievementName}>{achievement.name}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
-  },
-  scrollView: {
-    flex: 1,
+    backgroundColor: Colors.light.background,
   },
   header: {
-    padding: 30,
-    paddingTop: 50,
-    alignItems: 'center',
+    padding: 20,
+    paddingTop: 40,
   },
-  welcomeText: {
+  title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: 'white',
-    fontFamily: 'NotoSansThai_700Bold',
+    color: Colors.light.text,
     marginBottom: 8,
   },
-  subtitleText: {
+  subtitle: {
     fontSize: 16,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontFamily: 'NotoSansThai_400Regular',
+    color: Colors.light.text + '80',
   },
-  content: {
-    padding: 20,
+  statsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  primaryCard: {
+    flex: 2,
+    backgroundColor: Colors.light.tint,
+    padding: 24,
+    marginRight: 12,
+    borderRadius: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  primaryStatNumber: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: 'white',
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  primaryStatLabel: {
+    fontSize: 14,
+    color: 'white',
+    opacity: 0.9,
+    textAlign: 'center',
+  },
+  miniStatsContainer: {
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  miniStatCard: {
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+    marginBottom: 8,
+  },
+  miniStatNumber: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: Colors.light.tint,
+    marginTop: 4,
+  },
+  miniStatLabel: {
+    fontSize: 12,
+    color: Colors.light.text + '80',
+    textAlign: 'center',
+  },
+  insightCard: {
+    flexDirection: 'row',
+    backgroundColor: 'white',
+    marginHorizontal: 20,
+    marginBottom: 24,
+    padding: 16,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  insightContent: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  insightTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.light.text,
+    marginBottom: 4,
+  },
+  insightText: {
+    fontSize: 14,
+    color: Colors.light.text + '80',
+    lineHeight: 20,
   },
   quickActions: {
-    marginBottom: 30,
+    paddingHorizontal: 20,
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#2c3e50',
-    marginBottom: 15,
-    fontFamily: 'NotoSansThai_500Medium',
+    color: Colors.light.text,
+    marginBottom: 16,
   },
   actionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  actionCard: {
+  actionButton: {
     width: '48%',
+    flexDirection: 'column',
+    alignItems: 'center',
     backgroundColor: 'white',
     padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
+    borderRadius: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 3,
   },
   actionText: {
     marginTop: 8,
     fontSize: 14,
+    color: Colors.light.text,
     fontWeight: '500',
-    color: '#2c3e50',
-    fontFamily: 'NotoSansThai_500Medium',
+    textAlign: 'center',
   },
-  todayStats: {
-    marginBottom: 20,
+  achievementsSection: {
+    paddingHorizontal: 20,
+    marginBottom: 24,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statCard: {
-    flex: 1,
+  achievementCard: {
     backgroundColor: 'white',
-    padding: 25,
-    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    borderRadius: 16,
     alignItems: 'center',
-    marginHorizontal: 5,
+    minWidth: 100,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 3,
   },
-  statNumber: {
+  achievementEmoji: {
     fontSize: 32,
-    fontWeight: 'bold',
-    color: '#667eea',
-    fontFamily: 'NotoSansThai_700Bold',
+    marginBottom: 8,
   },
-  statLabel: {
-    fontSize: 14,
-    color: '#7f8c8d',
-    marginTop: 5,
-    fontFamily: 'NotoSansThai_400Regular',
+  achievementName: {
+    fontSize: 12,
+    color: Colors.light.text,
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });

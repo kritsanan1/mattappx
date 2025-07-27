@@ -1,215 +1,211 @@
-import * as SecureStore from 'expo-secure-store';
-import * as Crypto from 'expo-crypto';
+import { DataManager } from './DataManager';
 
 export interface MoodEntry {
   id: string;
-  timestamp: Date;
-  mood: 'very_sad' | 'sad' | 'neutral' | 'happy' | 'very_happy';
-  energy: number; // 1-10
-  stress: number; // 1-10
+  mood: number; // 1-5 scale
+  date: string;
   notes?: string;
   triggers?: string[];
+  activities?: string[];
+  intensity?: number; // 1-10 scale for mood intensity
 }
 
-export interface MoodStats {
-  averageMood: number;
-  averageEnergy: number;
-  averageStress: number;
-  moodTrend: 'improving' | 'stable' | 'declining';
-  commonTriggers: string[];
-}
+export class MoodTracker {
+  private static readonly STORAGE_KEY = 'mood_entries';
+  private static readonly TRIGGERS_KEY = 'mood_triggers';
+  private static readonly PATTERNS_KEY = 'mood_patterns';
 
-const MOOD_STORAGE_KEY = 'mood_entries';
-
-class MoodTrackerClass {
-  private encryptionKey: string | null = null;
-
-  async initialize() {
+  static async logMood(mood: number, triggers?: string[], notes?: string, activities?: string[], intensity?: number): Promise<MoodEntry> {
     try {
-      let key = await SecureStore.getItemAsync('mood_encryption_key');
-      if (!key) {
-        key = await Crypto.digestStringAsync(
-          Crypto.CryptoDigestAlgorithm.SHA256,
-          `mood_${Date.now()}_${Math.random()}`
-        );
-        await SecureStore.setItemAsync('mood_encryption_key', key);
-      }
-      this.encryptionKey = key;
-    } catch (error) {
-      console.error('Failed to initialize mood tracker:', error);
-      throw new Error('Failed to initialize mood tracking');
-    }
-  }
-
-  private async encrypt(data: string): Promise<string> {
-    if (!this.encryptionKey) {
-      await this.initialize();
-    }
-    return btoa(data);
-  }
-
-  private async decrypt(encryptedData: string): Promise<string> {
-    if (!this.encryptionKey) {
-      await this.initialize();
-    }
-    try {
-      return atob(encryptedData);
-    } catch (error) {
-      console.error('Decryption failed:', error);
-      throw new Error('Failed to decrypt mood data');
-    }
-  }
-
-  async addMoodEntry(entry: Omit<MoodEntry, 'id' | 'timestamp'>): Promise<void> {
-    try {
-      const moodEntry: MoodEntry = {
-        id: await Crypto.digestStringAsync(
-          Crypto.CryptoDigestAlgorithm.SHA256,
-          `mood_${Date.now()}_${Math.random()}`
-        ),
-        timestamp: new Date(),
-        ...entry
+      const entry: MoodEntry = {
+        id: Date.now().toString(),
+        mood,
+        date: new Date().toISOString(),
+        notes,
+        triggers,
+        activities,
+        intensity: intensity || mood,
       };
 
-      const existingEntries = await this.getMoodEntries();
-      const updatedEntries = [moodEntry, ...existingEntries].slice(0, 100); // Keep last 100 entries
+      const existingEntries = await this.getMoodHistory();
 
-      const encryptedData = await this.encrypt(JSON.stringify(updatedEntries));
-      await SecureStore.setItemAsync(MOOD_STORAGE_KEY, encryptedData);
+      // Check if there's already an entry for today and update it
+      const today = new Date().toDateString();
+      const todayEntryIndex = existingEntries.findIndex(e => 
+        new Date(e.date).toDateString() === today
+      );
+
+      if (todayEntryIndex >= 0) {
+        existingEntries[todayEntryIndex] = entry;
+      } else {
+        existingEntries.unshift(entry);
+      }
+
+      await DataManager.storeSecureData(this.STORAGE_KEY, JSON.stringify(existingEntries));
+
+      // Update trigger frequency
+      if (triggers && triggers.length > 0) {
+        await this.updateTriggerFrequency(triggers);
+      }
+
+      return entry;
     } catch (error) {
-      console.error('Failed to add mood entry:', error);
-      throw new Error('Failed to save mood entry');
+      console.error('Error logging mood:', error);
+      throw error;
     }
   }
 
-  async getMoodEntries(): Promise<MoodEntry[]> {
+  static async quickMoodEntry(): Promise<MoodEntry> {
+    // Quick entry with just a mood rating
+    const mood = 3; // Default neutral mood
+    return this.logMood(mood);
+  }
+
+  static async getMoodHistory(days?: number): Promise<MoodEntry[]> {
     try {
-      const encryptedData = await SecureStore.getItemAsync(MOOD_STORAGE_KEY);
-      if (!encryptedData) {
-        return [];
+      const data = await DataManager.getSecureData(this.STORAGE_KEY);
+      if (!data) return [];
+
+      const entries: MoodEntry[] = JSON.parse(data);
+
+      if (days) {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - days);
+        return entries.filter(entry => new Date(entry.date) >= cutoffDate);
       }
 
-      const decryptedData = await this.decrypt(encryptedData);
-      const entries = JSON.parse(decryptedData);
-      
-      return entries.map((entry: any) => ({
-        ...entry,
-        timestamp: new Date(entry.timestamp)
-      }));
+      return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     } catch (error) {
-      console.error('Failed to get mood entries:', error);
+      console.error('Error getting mood history:', error);
       return [];
     }
   }
 
-  async getMoodStats(days: number = 30): Promise<MoodStats> {
+  static async getTodayMood(): Promise<MoodEntry | null> {
     try {
-      const entries = await this.getMoodEntries();
-      const cutoffDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-      const recentEntries = entries.filter(entry => new Date(entry.timestamp) >= cutoffDate);
+      const entries = await this.getMoodHistory();
+      const today = new Date().toDateString();
 
-      if (recentEntries.length === 0) {
-        return {
-          averageMood: 0,
-          averageEnergy: 0,
-          averageStress: 0,
-          moodTrend: 'stable',
-          commonTriggers: []
-        };
-      }
-
-      const moodValues = recentEntries.map(entry => this.moodToNumber(entry.mood));
-      const averageMood = moodValues.reduce((sum, val) => sum + val, 0) / moodValues.length;
-      const averageEnergy = recentEntries.reduce((sum, entry) => sum + entry.energy, 0) / recentEntries.length;
-      const averageStress = recentEntries.reduce((sum, entry) => sum + entry.stress, 0) / recentEntries.length;
-
-      // Calculate trend
-      const firstHalf = moodValues.slice(0, Math.floor(moodValues.length / 2));
-      const secondHalf = moodValues.slice(Math.floor(moodValues.length / 2));
-      const firstHalfAvg = firstHalf.reduce((sum, val) => sum + val, 0) / firstHalf.length;
-      const secondHalfAvg = secondHalf.reduce((sum, val) => sum + val, 0) / secondHalf.length;
-
-      let moodTrend: 'improving' | 'stable' | 'declining' = 'stable';
-      if (secondHalfAvg > firstHalfAvg + 0.3) {
-        moodTrend = 'improving';
-      } else if (secondHalfAvg < firstHalfAvg - 0.3) {
-        moodTrend = 'declining';
-      }
-
-      // Common triggers
-      const triggerCounts: { [key: string]: number } = {};
-      recentEntries.forEach(entry => {
-        entry.triggers?.forEach(trigger => {
-          triggerCounts[trigger] = (triggerCounts[trigger] || 0) + 1;
-        });
-      });
-
-      const commonTriggers = Object.keys(triggerCounts)
-        .sort((a, b) => triggerCounts[b] - triggerCounts[a])
-        .slice(0, 5);
-
-      return {
-        averageMood,
-        averageEnergy,
-        averageStress,
-        moodTrend,
-        commonTriggers
-      };
+      return entries.find(entry => 
+        new Date(entry.date).toDateString() === today
+      ) || null;
     } catch (error) {
-      console.error('Failed to get mood stats:', error);
-      return {
-        averageMood: 0,
-        averageEnergy: 0,
-        averageStress: 0,
-        moodTrend: 'stable',
-        commonTriggers: []
-      };
+      console.error('Error getting today mood:', error);
+      return null;
     }
   }
 
-  private moodToNumber(mood: MoodEntry['mood']): number {
-    const moodMap = {
-      'very_sad': 1,
-      'sad': 2,
-      'neutral': 3,
-      'happy': 4,
-      'very_happy': 5
-    };
-    return moodMap[mood];
-  }
-
-  getMoodEmoji(mood: MoodEntry['mood']): string {
-    const emojiMap = {
-      'very_sad': '😢',
-      'sad': '😔',
-      'neutral': '😐',
-      'happy': '😊',
-      'very_happy': '😄'
-    };
-    return emojiMap[mood];
-  }
-
-  getMoodLabel(mood: MoodEntry['mood']): string {
-    const labelMap = {
-      'very_sad': 'เศร้ามาก',
-      'sad': 'เศร้า',
-      'neutral': 'ปกติ',
-      'happy': 'ดี',
-      'very_happy': 'ดีมาก'
-    };
-    return labelMap[mood];
-  }
-
-  async clearAllMoodData(): Promise<void> {
+  static async getMoodAverage(days: number = 7): Promise<number> {
     try {
-      await SecureStore.deleteItemAsync(MOOD_STORAGE_KEY);
-      await SecureStore.deleteItemAsync('mood_encryption_key');
-      this.encryptionKey = null;
+      const entries = await this.getMoodHistory(days);
+      if (entries.length === 0) return 0;
+
+      const sum = entries.reduce((total, entry) => total + entry.mood, 0);
+      return Math.round((sum / entries.length) * 10) / 10;
     } catch (error) {
-      console.error('Failed to clear mood data:', error);
-      throw new Error('Failed to clear mood data');
+      console.error('Error calculating mood average:', error);
+      return 0;
+    }
+  }
+
+  static async getMoodTrend(days: number = 14): Promise<'improving' | 'declining' | 'stable'> {
+    try {
+      const entries = await this.getMoodHistory(days);
+      if (entries.length < 3) return 'stable';
+
+      const recentAvg = entries.slice(0, Math.floor(entries.length / 2))
+        .reduce((sum, entry) => sum + entry.mood, 0) / Math.floor(entries.length / 2);
+
+      const olderAvg = entries.slice(Math.floor(entries.length / 2))
+        .reduce((sum, entry) => sum + entry.mood, 0) / Math.ceil(entries.length / 2);
+
+      const difference = recentAvg - olderAvg;
+
+      if (difference > 0.3) return 'improving';
+      if (difference < -0.3) return 'declining';
+      return 'stable';
+    } catch (error) {
+      console.error('Error calculating mood trend:', error);
+      return 'stable';
+    }
+  }
+
+  static async getTopTriggers(limit: number = 5): Promise<Array<{trigger: string, count: number}>> {
+    try {
+      const data = await DataManager.getSecureData(this.TRIGGERS_KEY);
+      if (!data) return [];
+
+      const triggers: {[key: string]: number} = JSON.parse(data);
+      return Object.entries(triggers)
+        .map(([trigger, count]) => ({ trigger, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, limit);
+    } catch (error) {
+      console.error('Error getting top triggers:', error);
+      return [];
+    }
+  }
+
+  private static async updateTriggerFrequency(triggers: string[]): Promise<void> {
+    try {
+      const data = await DataManager.getSecureData(this.TRIGGERS_KEY);
+      const triggerCounts: {[key: string]: number} = data ? JSON.parse(data) : {};
+
+      triggers.forEach(trigger => {
+        triggerCounts[trigger] = (triggerCounts[trigger] || 0) + 1;
+      });
+
+      await DataManager.storeSecureData(this.TRIGGERS_KEY, JSON.stringify(triggerCounts));
+    } catch (error) {
+      console.error('Error updating trigger frequency:', error);
+    }
+  }
+
+  static async getWeeklyMoodPattern(): Promise<{[key: string]: number}> {
+    try {
+      const entries = await this.getMoodHistory(28); // Last 4 weeks
+      const dayPattern: {[key: string]: number[]} = {
+        'Sunday': [], 'Monday': [], 'Tuesday': [], 'Wednesday': [],
+        'Thursday': [], 'Friday': [], 'Saturday': []
+      };
+
+      entries.forEach(entry => {
+        const dayName = new Date(entry.date).toLocaleDateString('en-US', { weekday: 'long' });
+        dayPattern[dayName].push(entry.mood);
+      });
+
+      const averages: {[key: string]: number} = {};
+      Object.entries(dayPattern).forEach(([day, moods]) => {
+        averages[day] = moods.length > 0 
+          ? Math.round((moods.reduce((sum, mood) => sum + mood, 0) / moods.length) * 10) / 10
+          : 0;
+      });
+
+      return averages;
+    } catch (error) {
+      console.error('Error getting weekly mood pattern:', error);
+      return {};
+    }
+  }
+
+  static async deleteMoodEntry(entryId: string): Promise<void> {
+    try {
+      const entries = await this.getMoodHistory();
+      const updatedEntries = entries.filter(entry => entry.id !== entryId);
+      await DataManager.storeSecureData(this.STORAGE_KEY, JSON.stringify(updatedEntries));
+    } catch (error) {
+      console.error('Error deleting mood entry:', error);
+      throw error;
+    }
+  }
+
+  static async exportMoodData(): Promise<string> {
+    try {
+      const entries = await this.getMoodHistory();
+      return JSON.stringify(entries, null, 2);
+    } catch (error) {
+      console.error('Error exporting mood data:', error);
+      throw error;
     }
   }
 }
-
-export const MoodTracker = new MoodTrackerClass();

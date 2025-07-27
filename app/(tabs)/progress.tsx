@@ -1,8 +1,7 @@
-
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LineChart, BarChart } from 'react-native-chart-kit';
+import { LineChart, BarChart, PieChart as RNPieChart, ProgressChart } from 'react-native-chart-kit';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const screenWidth = Dimensions.get('window').width;
@@ -45,6 +44,26 @@ const activityData = {
 };
 
 export default function ProgressScreen() {
+  const [selectedTab, setSelectedTab] = useState('overview');
+
+  const renderOverviewTab = () => (
+    <View>
+      <Text>Overview Tab Content</Text>
+    </View>
+  );
+
+  const renderMoodTab = () => (
+    <View>
+      <Text>Mood Tab Content</Text>
+    </View>
+  );
+
+  const renderAchievementsTab = () => (
+    <View>
+      <Text>Achievements Tab Content</Text>
+    </View>
+  );
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView}>
@@ -53,7 +72,42 @@ export default function ProgressScreen() {
           <Text style={styles.subtitle}>ติดตามพัฒนาการของคุณ</Text>
         </LinearGradient>
 
+        {/* Tab Navigation */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === 'overview' && styles.activeTab]}
+            onPress={() => setSelectedTab('overview')}
+          >
+            <Text style={[styles.tabText, selectedTab === 'overview' && styles.activeTabText]}>
+              ภาพรวม
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === 'mood' && styles.activeTab]}
+            onPress={() => setSelectedTab('mood')}
+          >
+            <Text style={[styles.tabText, selectedTab === 'mood' && styles.activeTabText]}>
+              อารมณ์
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.tab, selectedTab === 'achievements' && styles.activeTab]}
+            onPress={() => setSelectedTab('achievements')}
+          >
+            <Text style={[styles.tabText, selectedTab === 'achievements' && styles.activeTabText]}>
+              รางวัล
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Tab Content */}
         <View style={styles.content}>
+          {selectedTab === 'overview' && renderOverviewTab()}
+          {selectedTab === 'mood' && renderMoodTab()}
+          {selectedTab === 'achievements' && renderAchievementsTab()}
+
           <View style={styles.statsOverview}>
             <View style={styles.statCard}>
               <Text style={styles.statNumber}>14</Text>
@@ -277,5 +331,35 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2c3e50',
     fontFamily: 'NotoSansThai_400Regular',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 8,
+    margin: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  activeTab: {
+    backgroundColor: '#667eea',
+    borderRadius: 8,
+  },
+  tabText: {
+    fontSize: 14,
+    color: '#2c3e50',
+    fontFamily: 'NotoSansThai_500Medium',
+  },
+  activeTabText: {
+    color: 'white',
   },
 });
