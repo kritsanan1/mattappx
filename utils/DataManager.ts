@@ -224,6 +224,37 @@ class DataManagerClass {
       throw new Error('Failed to update consent status');
     }
   }
+
+  async storeSecureData(key: string, data: string): Promise<void> {
+    try {
+      const encryptedData = await this.encrypt(data);
+      await SecureStore.setItemAsync(`app_${key}`, encryptedData);
+    } catch (error) {
+      console.error(`Failed to store secure data for key ${key}:`, error);
+      throw new Error(`Failed to store secure data: ${key}`);
+    }
+  }
+
+  async getSecureData(key: string): Promise<string | null> {
+    try {
+      const encryptedData = await SecureStore.getItemAsync(`app_${key}`);
+      if (!encryptedData) return null;
+      
+      return await this.decrypt(encryptedData);
+    } catch (error) {
+      console.error(`Failed to get secure data for key ${key}:`, error);
+      return null;
+    }
+  }
+
+  async removeSecureData(key: string): Promise<void> {
+    try {
+      await SecureStore.deleteItemAsync(`app_${key}`);
+    } catch (error) {
+      console.error(`Failed to remove secure data for key ${key}:`, error);
+      throw new Error(`Failed to remove secure data: ${key}`);
+    }
+  }
 }
 
 export const DataManager = new DataManagerClass();
