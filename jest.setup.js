@@ -1,5 +1,5 @@
 
-import '@testing-library/jest-native/extend-expect';
+// Using built-in matchers from @testing-library/react-native (v12.4+)
 
 // Mock react-native modules
 jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
