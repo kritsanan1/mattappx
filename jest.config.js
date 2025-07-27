@@ -4,7 +4,11 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      tsconfig: {
+        jsx: 'react-jsx',
+      },
+    }],
   },
   testMatch: [
     '**/__tests__/**/*.(ts|tsx|js)',
@@ -21,4 +25,8 @@ module.exports = {
   moduleNameMapping: {
     '^@/(.*)$': '<rootDir>/$1',
   },
+  testEnvironment: 'jsdom',
+  transformIgnorePatterns: [
+    'node_modules/(?!(react-native|@react-native|expo|@expo|react-native-svg|lucide-react-native)/)',
+  ],
 };
